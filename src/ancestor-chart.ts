@@ -46,11 +46,12 @@ export class AncestorChart<IndiT extends Indi, FamT extends Fam>
     this.util = new ChartUtil(options);
   }
 
-  /** Creates a d3 hierarchy from the input data. */
   createHierarchy(): HierarchyNode<TreeNode> {
     const parents: TreeNode[] = [];
     const stack: TreeNode[] = [];
+    const alreadyParsedNodeIds = new Set<string>();
     const idGenerator = this.options.idGenerator || new IdGenerator();
+
     if (this.options.startIndi) {
       const indi = this.options.data.getIndi(this.options.startIndi)!;
       const famc = indi.getFamilyAsChild();
@@ -75,9 +76,10 @@ export class AncestorChart<IndiT extends Indi, FamT extends Fam>
     }
 
     while (stack.length) {
-      const entry = stack.pop()!;
-      const fam = this.options.data.getFam(entry.family!.id);
-      if (!fam) {
+      const entry = stack.pop();
+      const fam = entry && this.options.data.getFam(entry.family!.id);
+
+      if (!entry || !fam) {
         continue;
       }
       const [father, mother] =
@@ -88,36 +90,37 @@ export class AncestorChart<IndiT extends Indi, FamT extends Fam>
       if (!father && !mother) {
         continue;
       }
-      if (mother) {
+
+      if (mother && !alreadyParsedNodeIds.has(mother)) {
         entry.spouse = { id: mother };
-        const indi = this.options.data.getIndi(mother)!;
-        const famc = indi.getFamilyAsChild();
-        if (famc) {
+        const indi = this.options.data.getIndi(mother);
+        const famc = indi?.getFamilyAsChild();
+
+        if (famc && !alreadyParsedNodeIds.has(famc)) {
           const id = idGenerator.getId(famc);
           entry.spouseParentNodeId = id;
-          stack.push({
-            id,
-            parentId: entry.id,
-            family: { id: famc },
-          });
+          stack.push({ id, parentId: entry.id, family: { id: famc } });
         }
       }
-      if (father) {
-        entry.indi = { id: father };
-        const indi = this.options.data.getIndi(father)!;
-        const famc = indi.getFamilyAsChild();
-        if (famc) {
+
+      if (father && !alreadyParsedNodeIds.has(father)) {
+        entry.indi = {id: father};
+        const indi = this.options.data.getIndi(father);
+        const famc = indi?.getFamilyAsChild();
+
+        if (famc && !alreadyParsedNodeIds.has(famc)) {
           const id = idGenerator.getId(famc);
           entry.indiParentNodeId = id;
-          stack.push({
-            id,
-            parentId: entry.id,
-            family: { id: famc },
-          });
+          stack.push({id, parentId: entry.id, family: {id: famc}});
         }
       }
-      parents.push(entry);
+
+      if (!alreadyParsedNodeIds.has(entry.id)) {
+        parents.push(entry);
+        alreadyParsedNodeIds.add(entry.id);
+      }
     }
+
     return stratify<TreeNode>()(parents);
   }
 
